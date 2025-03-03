@@ -24,3 +24,10 @@ android {
 dependencies {
     implementation libs.appcompat
 }
+
+task wrapper(type: Wrapper){
+}
+
+task prepareKotlinBuildScriptModel {
+
+}
