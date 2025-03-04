@@ -26,6 +26,8 @@
 #include "audio_recorder.h"
 #include "jni_interface.h"
 
+#include <android/log.h>
+
 struct EchoAudioEngine {
   SLmilliHertz fastPathSampleRate_;
   uint32_t fastPathFramesPerBuf_;
@@ -62,9 +64,11 @@ JNIEXPORT void JNICALL Java_com_google_sample_echo_MainActivity_createSLEngine(
   engine.sampleChannels_ = AUDIO_SAMPLE_CHANNELS;
   engine.bitsPerSample_ = SL_PCMSAMPLEFORMAT_FIXED_16;
 
+  __android_log_print(ANDROID_LOG_ERROR, "bugbug native", "start slCreateEngine");
   result = slCreateEngine(&engine.slEngineObj_, 0, NULL, 0, NULL, NULL);
   SLASSERT(result);
 
+  __android_log_print(ANDROID_LOG_ERROR, "bugbug native", "realize first engine");
   result =
       (*engine.slEngineObj_)->Realize(engine.slEngineObj_, SL_BOOLEAN_FALSE);
   SLASSERT(result);

@@ -27,6 +27,7 @@ class AudioFormat {
  protected:
   int32_t sampleRate_ = SL_SAMPLINGRATE_48;
   int32_t channelCount_ = 2;
+  //int32_t channelCount_ = 1;
   SLuint32 format_ = SL_PCMSAMPLEFORMAT_FIXED_16;
 
   AudioFormat(int32_t sampleRate, int32_t channelCount, SLuint32 format)

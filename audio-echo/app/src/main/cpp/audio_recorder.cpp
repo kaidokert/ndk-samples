@@ -65,15 +65,18 @@ AudioRecorder::AudioRecorder(SampleFormat *sampleFormat, SLEngineItf slEngine)
   SLAndroidDataFormat_PCM_EX format_pcm;
   ConvertToSLSampleFormat(&format_pcm, &sampleInfo_);
 
+   //SLuint32 device_id = 5;
+  //SLuint32 device_id = 7;
+  SLuint32 device_id = SL_DEFAULTDEVICEID_AUDIOINPUT;
   // configure audio source
   SLDataLocator_IODevice loc_dev = {SL_DATALOCATOR_IODEVICE,
                                     SL_IODEVICE_AUDIOINPUT,
-                                    SL_DEFAULTDEVICEID_AUDIOINPUT, NULL};
+                                    device_id, NULL};
   SLDataSource audioSrc = {&loc_dev, NULL};
 
   // configure audio sink
   SLDataLocator_AndroidSimpleBufferQueue loc_bq = {
-      SL_DATALOCATOR_ANDROIDSIMPLEBUFFERQUEUE, DEVICE_SHADOW_BUFFER_QUEUE_LEN};
+      SL_DATALOCATOR_ANDROIDSIMPLEBUFFERQUEUE, DEVICE_INPUT_SHADOW_BUFFER_QUEUE_LEN};
 
   SLDataSink audioSnk = {&loc_bq, &format_pcm};
 
@@ -82,6 +85,7 @@ AudioRecorder::AudioRecorder(SampleFormat *sampleFormat, SLEngineItf slEngine)
   const SLInterfaceID id[2] = {SL_IID_ANDROIDSIMPLEBUFFERQUEUE,
                                SL_IID_ANDROIDCONFIGURATION};
   const SLboolean req[2] = {SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE};
+  __android_log_print(ANDROID_LOG_ERROR, "bugbug native", "before CreateAudioRecorder");
   result = (*slEngine)->CreateAudioRecorder(
       slEngine, &recObjectItf_, &audioSrc, &audioSnk,
       sizeof(id) / sizeof(id[0]), id, req);
@@ -94,11 +98,13 @@ AudioRecorder::AudioRecorder(SampleFormat *sampleFormat, SLEngineItf slEngine)
                ->GetInterface(recObjectItf_, SL_IID_ANDROIDCONFIGURATION,
                               &inputConfig);
   if (SL_RESULT_SUCCESS == result) {
+    __android_log_print(ANDROID_LOG_ERROR, "bugbug native", "before SetConfiguration SL_ANDROID_RECORDING_PRESET_VOICE_RECOGNITION");
     SLuint32 presetValue = SL_ANDROID_RECORDING_PRESET_VOICE_RECOGNITION;
     (*inputConfig)
         ->SetConfiguration(inputConfig, SL_ANDROID_KEY_RECORDING_PRESET,
                            &presetValue, sizeof(SLuint32));
   }
+  __android_log_print(ANDROID_LOG_ERROR, "bugbug native", "before second realize");
   result = (*recObjectItf_)->Realize(recObjectItf_, SL_BOOLEAN_FALSE);
   SLASSERT(result);
   result =
@@ -114,7 +120,7 @@ AudioRecorder::AudioRecorder(SampleFormat *sampleFormat, SLEngineItf slEngine)
                ->RegisterCallback(recBufQueueItf_, bqRecorderCallback, this);
   SLASSERT(result);
 
-  devShadowQueue_ = new AudioQueue(DEVICE_SHADOW_BUFFER_QUEUE_LEN);
+  devShadowQueue_ = new AudioQueue(DEVICE_INPUT_SHADOW_BUFFER_QUEUE_LEN);
   assert(devShadowQueue_);
 #ifdef ENABLE_LOG
   std::string name = "rec";

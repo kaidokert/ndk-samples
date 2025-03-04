@@ -16,14 +16,27 @@
 
 package com.google.sample.echo;
 
+import static android.media.AudioManager.GET_DEVICES_INPUTS;
+
 import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.hardware.input.InputManager;
+import android.media.AudioDescriptor;
 import android.media.AudioFormat;
 import android.media.AudioManager;
+import android.media.AudioProfile;
 import android.media.AudioRecord;
+import android.media.MediaRecorder;
+import android.media.MediaRouter;
+import android.os.Build.VERSION;
+import android.os.Build.VERSION_CODES;
 import android.os.Bundle;
+import android.provider.MediaStore.Audio;
+import android.provider.MediaStore.Audio.Media;
+import android.util.Log;
+import android.view.InputDevice;
 import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
 import android.view.Menu;
@@ -33,9 +46,13 @@ import android.widget.Button;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.media.AudioDeviceInfo;
 
 public class MainActivity extends Activity
         implements ActivityCompat.OnRequestPermissionsResultCallback {
+    public static final String TAG = "bugbug";
+
+
     private static final int AUDIO_ECHO_REQUEST = 0;
 
     private Button   controlButton;
@@ -54,9 +71,13 @@ public class MainActivity extends Activity
     private boolean supportRecording;
     private Boolean isPlaying = false;
 
+    private boolean ssl_created = false;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
+      setVolumeControlStream(AudioManager.STREAM_MUSIC);
+
+      super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         controlButton = (Button)findViewById((R.id.capture_control_button));
         statusView = (TextView)findViewById(R.id.statusView);
@@ -119,12 +140,25 @@ public class MainActivity extends Activity
         updateNativeAudioUI();
 
         if (supportRecording) {
-            createSLEngine(
-                    Integer.parseInt(nativeSampleRate),
-                    Integer.parseInt(nativeSampleBufSize),
-                    echoDelayProgress,
-                    echoDecayProgress);
+           //maybecreatessl();
         }
+    }
+
+    private void maybecreatessl() {
+      if(!ssl_created) {
+        createSLEngine(
+            16000, ///Integer.parseInt(nativeSampleRate),
+            128, //Integer.parseInt(nativeSampleBufSize),
+            echoDelayProgress,
+            echoDecayProgress);
+        ssl_created = true;
+      }
+    }
+    private void maybedestroyssl() {
+      if(ssl_created) {
+        deleteSLEngine();
+        ssl_created = false;
+      }
     }
 
     private void setSeekBarPromptPosition(SeekBar seekBar, TextView label) {
@@ -139,7 +173,7 @@ public class MainActivity extends Activity
             if (isPlaying) {
                 stopPlay();
             }
-            deleteSLEngine();
+            maybedestroyssl();
             isPlaying = false;
         }
         super.onDestroy();
@@ -167,10 +201,21 @@ public class MainActivity extends Activity
         return super.onOptionsItemSelected(item);
     }
 
+    private void setMicInputSource() {
+      AudioManager audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
+      //audioManager.setParameters("input_source=6");
+      Log.i(TAG, "params: " + audioManager.getParameters("input_source;routing"));
+      Log.i(TAG, "---- > SETT MIC INPUT");
+    }
     private void startEcho() {
         if(!supportRecording){
             return;
         }
+      isMicrophoneDisconnected();
+
+      setMicInputSource();
+        //ensureMicRouting();
+      maybecreatessl();
         if (!isPlaying) {
             if(!createSLBufferQueueAudioPlayer()) {
                 statusView.setText(getString(R.string.player_error_msg));
@@ -210,15 +255,92 @@ public class MainActivity extends Activity
         updateNativeAudioUI();
     }
 
+  public boolean isMicrophoneDisconnected() {
+    // A check specifically for microphones is not available before API 28, so it is assumed that a
+    // connected input audio device is a microphone.
+    AudioManager audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
+    AudioDeviceInfo[] devices = audioManager.getDevices(GET_DEVICES_INPUTS);
+    if (devices.length > 0) {
+      //return false;
+    }
+
+    // fallback to check for BT voice capable RCU
+    InputManager inputManager = (InputManager) getSystemService(Context.INPUT_SERVICE);
+    final int[] inputDeviceIds = inputManager.getInputDeviceIds();
+    for (int inputDeviceId : inputDeviceIds) {
+      final InputDevice inputDevice = inputManager.getInputDevice(inputDeviceId);
+      final boolean hasMicrophone = inputDevice.hasMicrophone();
+      if (hasMicrophone) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+
+
+    private void ensureMicRouting() {
+        MediaRouter router = (MediaRouter ) getSystemService(Context.MEDIA_ROUTER_SERVICE);
+        Log.i(TAG," Num routes: " + router.getRouteCount());
+
+        AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        audioManager.setBluetoothScoOn(false);
+        audioManager.stopBluetoothSco();
+        audioManager.setMicrophoneMute(false);
+        //audioManager.setAllowedCapturePolicy();
+        //audioManager.setRouting();
+      AudioDeviceInfo[] devices = null;
+      if (VERSION.SDK_INT >= VERSION_CODES.M) {
+        devices = audioManager.getDevices(GET_DEVICES_INPUTS);
+          for (AudioDeviceInfo device : devices) {
+              Log.i(TAG, " input: " + device.getProductName());
+              Log.i(TAG, " type: " + device.getType());
+              Log.i(TAG, " id: " + device.getId());
+                    if (
+                         device.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                         device.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_SCO) {
+                    // Found a Bluetooth device (BLE or classic)
+                    Log.i("AudioEcho", "Selecting Bluetooth input: " + device.getProductName());
+                    //audioManager.setPreferredDeviceForStrategy(device); // API 23+
+                    break;
+                }
+                    if(device.getType() == AudioDeviceInfo.TYPE_BUILTIN_MIC) {
+                        Log.i("AudioEcho", "Selecting TYPE_BUILTIN_MIC input: " + device.getProductName());
+
+                        AudioRecord recorder = new AudioRecord.Builder()
+                            .setAudioSource(MediaRecorder.AudioSource.VOICE_RECOGNITION)
+                            .setAudioFormat(new AudioFormat.Builder()
+                                .setSampleRate(8000)
+                                .build())
+                            .setBufferSizeInBytes(2*128)
+                            .build();
+                        recorder.setPreferredDevice(device);
+                        recorder.startRecording();
+                        recorder.stop();
+                        Log.i(TAG,"---------------- DONE record start");
+                    }
+            }
+      }
+    }
+
     private void queryNativeAudioParameters() {
+        Log.i(TAG,"queryNativeAudioParameters");
         supportRecording = true;
         AudioManager myAudioMgr = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         if(myAudioMgr == null) {
+            Log.i(TAG,"Recording not supported 1");
             supportRecording = false;
             return;
         }
+        boolean mute = myAudioMgr.isMicrophoneMute();
+        Log.i(TAG, "Mic mute ? " + mute);
+
         nativeSampleRate  =  myAudioMgr.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE);
+        //nativeSampleRate = "8000";
+        nativeSampleRate = "16000";
         nativeSampleBufSize =myAudioMgr.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER);
+        //nativeSampleBufSize = "128";
+
 
         // hardcoded channel to mono: both sides -- C++ and Java sides
         int recBufSize = AudioRecord.getMinBufferSize(
@@ -227,8 +349,36 @@ public class MainActivity extends Activity
                 AudioFormat.ENCODING_PCM_16BIT);
         if (recBufSize == AudioRecord.ERROR ||
                 recBufSize == AudioRecord.ERROR_BAD_VALUE) {
+            Log.i(TAG,"Recording not supported 2");
             supportRecording = false;
         }
+
+        // Hacky code
+      if (VERSION.SDK_INT >= VERSION_CODES.M) {
+          AudioDeviceInfo[] devices = myAudioMgr.getDevices(GET_DEVICES_INPUTS);
+          if (devices.length > 0) {
+              Log.i(TAG, "More than one GET_DEVICES_INPUTS");
+              for (AudioDeviceInfo dev: devices) {
+                  Log.i(TAG,"Device: " + dev.toString());
+                  Log.i(TAG, "[prodname]: " + dev.getProductName());
+                    if (VERSION.SDK_INT >= VERSION_CODES.P) {
+                      Log.i(TAG, "address:" + dev.getAddress() );
+                    }
+                    Log.i(TAG, "ID:" + dev.getId());
+                if (VERSION.SDK_INT >= VERSION_CODES.S) {
+                  for(AudioProfile prof: dev.getAudioProfiles()) {
+                      Log.i(TAG, "prof:" + prof.toString());
+                  }
+                }
+                if (VERSION.SDK_INT >= VERSION_CODES.S) {
+                  for(AudioDescriptor desc: dev.getAudioDescriptors()) {
+                      Log.i(TAG, "desc:" + desc.toString());
+                  }
+                }
+              }
+          }
+      }
+
 
     }
     private void updateNativeAudioUI() {

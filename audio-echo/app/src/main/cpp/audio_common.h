@@ -32,10 +32,13 @@
 /*
  * Sample Buffer Controls...
  */
-#define RECORD_DEVICE_KICKSTART_BUF_COUNT 2
+#define RECORD_DEVICE_KICKSTART_BUF_COUNT 2 // same as const int kNumOfOpenSLESBuffers = 2;
 #define PLAY_KICKSTART_BUFFER_COUNT 3
+//#define DEVICE_SHADOW_BUFFER_QUEUE_LEN 2
 #define DEVICE_SHADOW_BUFFER_QUEUE_LEN 4
+#define DEVICE_INPUT_SHADOW_BUFFER_QUEUE_LEN 2 // same as const int kNumOfOpenSLESBuffers = 2;
 #define BUF_COUNT 16
+//#define BUF_COUNT 2
 
 struct SampleFormat {
   uint32_t sampleRate_;
